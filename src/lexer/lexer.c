@@ -1,27 +1,22 @@
 #include "../../include/lexer.h"
 
+
 /*----------------------------------------------
     LEXER CONSTRUCTOR
 -----------------------------------------------*/
 
-MiniTclLexer *MiniTclLexer_create(const char *source)
+static MiniTclLexer *MiniTclLexer_create(const char *source)
 {
     MiniTclLexer *lex = (MiniTclLexer *)xmalloc(sizeof(MiniTclLexer));
     memset(lex, 0, sizeof(*lex));
     lex->p = source;
     lex->len = strlen(source);
-    lex->capacity = 1024; 
+    lex->capacity = 128; 
     lex->count = 0;
     lex->line = 1;
     lex->column = 1;
     lex->index = 0;
-    lex->alloc_size = 256;
-    lex->alloc_count = 0;
-    lex->alloc = (char **)xmalloc(lex->alloc_size * sizeof(char *));
     lex->tokens = (MiniTclToken *)xmalloc(lex->capacity * sizeof(MiniTclToken));
-    lex->regex = NULL;
-    lex->match = NULL;
-    lex->status = MINITCL_LEXER_OK;
     return lex;
 }
 
@@ -44,15 +39,7 @@ void MiniTclLexer_destroy(MiniTclLexer *lex)
 {
     if (!lex) 
         return;
-    pcre2_code_free(lex->regex->name);
-    pcre2_code_free(lex->regex->variable);
-    lex->regex = NULL;
-    for (size_t i = 0; i < lex->alloc_count; i++)
-        xfree(lex->alloc[i]);
-    xfree(lex->alloc);
-    xfree(lex->regex);
-    xfree(lex->match);
-    xfree(lex->tokens);
+    // Nota: No se libera memory de los tokens aún ya que estos serán usados en fáses posteriores
     xfree(lex);
 }
 
@@ -79,15 +66,34 @@ static const char *token_type_to_string(TokenType type)
 
 void printLexerTokens(MiniTclLexer *lex)
 {
+    if (lex == NULL)
+        return;
+
+    printf("%-4s %-16s %s\n", "N", "TIPO", "LEXEMA");
+    printf("------------------------------------------\n");
+
     for (size_t i = 0; i < lex->count; i++)
     {
-        MiniTclToken tok = lex->tokens[i];
-        if (lex->tokens[i].tokType == MINITCL_TOK_NEWLINE)
-            printf("Token: NEWLINE\n");
-        else if (lex->tokens[i].tokType == MINITCL_TOK_ARRAY_VAR)
-            printf("Token: (%.*s, %.*s)\n", (int)tok.array->name_length, tok.array->name, (int)tok.array->index_length, tok.array->index);
-        else 
-            printf("Token: %-10.*s type = %s\n", (int)tok.length, tok.start, token_type_to_string(tok.tokType) );
+        const MiniTclToken *tok = &lex->tokens[i];
+
+        printf("%-4zu %-16s ", i, token_type_to_string(tok->tokType));
+
+        if (tok->tokType == MINITCL_TOK_NEWLINE)
+        {
+            printf("\\n\n");
+        }
+        else if (tok->tokType == MINITCL_TOK_ARRAY_VAR)
+        {
+            printf(
+                "(%.*s, %.*s)\n",
+                (int)tok->array->name_length,
+                tok->array->name,
+                (int)tok->array->index_length,
+                tok->array->index
+            );
+        }
+        else
+            printf("%.*s\n", (int)tok->length, tok->start);
     }
 }
 
@@ -95,101 +101,45 @@ void printLexerTokens(MiniTclLexer *lex)
     LEXER ERROR HANDLING 
 -----------------------------------------------*/
 
-static const char *MiniTclLexer_get_error(MiniTclLexerStatus error)
+// Debe mejorar (Versión inicial)
+static void MiniTclLexer_show_error(const char *error, size_t line, size_t column, const char *fragment, size_t len)
 {
-    switch(error)
-    {
-        case MINITCL_LEXER_CANT_ESCAPE:
-            return "Invalid escape sequence.";
-        case MINITCL_LEXER_BRACE_NOT_CLOSED:
-            return "Unclosed brace word.";
-        case MINITCL_LEXER_COMMAND_NOT_CLOSED:
-            return "Unclosed command substitution.";
-        case MINITCL_LEXER_QUOTE_NOT_CLOSED:
-            return "\" String not closed.";
-        case MINITCL_LEXER_ARRAY_INDEX_NOT_CLOSED:
-            return "Unclosed array index";
-        case MINITCL_LEXER_NO_COMMAND_CONTEXT:
-            return "Unexpected command substitution terminator.";
-        case MINITCL_LEXER_NO_BRACE_CONTEXT:
-            return "Unexpected brace word termination.";
-        case MINITCL_LEXER_NO_ARRAY_CONTEXT:
-            return "Unexpected closed array index.";
-        case MINITCL_LEXER_NO_QUOTE_CONTEXT:
-            return "Unexpected closed quote word.";
-        case MINITCL_LEXER_NO_SCRIPT_CONTEXT:
-            return "Unexpected string termination.";;
-        case MINITCL_LEXER_ERROR:
-            return "Unknown error detected.";
-        default:
-            return "";
-    }
-}
-
-static MiniTclLexerError *MiniTclLexer_create_error(
-  MiniTclLexerStatus error, size_t line, size_t column)
-{
-    MiniTclLexerError *err = (MiniTclLexerError *)xmalloc(sizeof(MiniTclLexerError));
-    err->error  = error;
-    err->line   = line;
-    err->column = column;
-    err->msg    = MiniTclLexer_get_error(error);
-    return err;
-}
-
-static void MiniTclLexer_show_error(MiniTclLexerStatus error, size_t line, size_t column)
-{
-    MiniTclLexerError *err = MiniTclLexer_create_error(error, line, column);
-    die("[!] Lexical error Minitcl[line=%zu, col=%zu]: %s", err->line, err->column, err->msg);
+    die("%s [line=%zu, col=%zu]: %.*s", error, line, column, len, fragment);
 }
 
 /*----------------------------------------------
     LEXER  METHODS
 -----------------------------------------------*/
 
-static bool MiniTclLexer_ateos(MiniTclLexer *lex) // at end of string
+static bool ateos(MiniTclLexer *lex) // at end of string
 {
-    return lex->len == 0 ? true : false;
+    return lex->len == 0;
 }
 
-static char MiniTclLexer_peek(MiniTclLexer *lex)
+static char peek(MiniTclLexer *lex)
 {
-    return *lex->p;
+    return ateos(lex) ? '\0' : *lex->p;
 }
 
 /* Helper function to consume current char and advance */
-static void MiniTclLexer_consume(MiniTclLexer *lex)
+static void consume(MiniTclLexer *lex)
 {
-    if (!MiniTclLexer_ateos(lex))
+    if (!ateos(lex))
     {
         lex->len--;
         lex->index++;
-        if (*lex->p == '\n')
+        if (peek(lex) == '\n')
         {
             lex->line++; 
             lex->column = 1;
         }
         else
             lex->column++;
-        ++lex->p;
+        lex->p++;
     }
 }
 
-/* Saved allocated chunk for words and variables in array so we can free them later*/
-static void MiniTclLexer_pushAlloc(MiniTclLexer *lex, char *alloc)
-{
-    if (lex->alloc_count == lex->alloc_size)
-    {
-        lex->alloc_size *= 2;
-        lex->alloc = (char **)xrealloc(lex->alloc, lex->alloc_size);
-    }
-    lex->alloc[lex->alloc_count++] = alloc;
-}
-
-/* Save token in lexer */
-static void MiniTclLexer_push_token(
-  MiniTclLexer *lex, void *value, 
-  size_t length, TokenType type)
+static void push_token(MiniTclLexer *lex, void *value, size_t length, TokenType type)
 {
     size_t pos = lex->count;
     if (type == MINITCL_TOK_ARRAY_VAR)
@@ -204,14 +154,20 @@ static void MiniTclLexer_push_token(
     lex->count++;
 }
 
-static  bool MiniTclLexer_isspace(char ch)
+static bool isSpace(char ch)
 {
-    if (ch == ' ' || ch == '\t' || ch == '\r')
-        return true;
-    return false;
+    switch (ch) 
+    {
+        case ' ': 
+        case '\t':
+        case '\r':
+            return true;
+        default:
+            return false;
+    }
 }
 
-static bool MiniTclLexer_isWordStop(char ch)
+static bool isWordStop(char ch)
 {
     switch (ch) 
     {
@@ -224,72 +180,79 @@ static bool MiniTclLexer_isWordStop(char ch)
     }
 }
 
-static bool MiniTclLexer_isVarStop(char ch)
+static bool isVarStop(char ch)
 {
     switch (ch) 
     {
         case 'a' ... 'z':
         case 'A' ... 'Z':
         case '0' ... '9':
-        case '_': case '\\':
+        case '_': case '{':
+        case '}':
             return false;
         default:
             return true;
     }
 }
 
-/*----------------------------------------------
-    Regular expressions rules
------------------------------------------------*/
-
-static pcre2_code *MiniTclLexer_compile_regex(const char *pattern)
+static bool isValidIdentifier(const char *start, size_t len)
 {
-    int error_number;
-    PCRE2_SIZE error_offset;
-    pcre2_code *re = pcre2_compile(
-        (PCRE2_SPTR8)pattern,           /* the pattern */
-        PCRE2_ZERO_TERMINATED,          /* indicates pattern is zero-terminated */
-        0,                              /* default options */
-        &error_number,                  /* for error number */
-        &error_offset,                  /* for error offset */
-        NULL                            /* use default compile context */
-    );                 
-
-    // PCRE2 error
-    if (re == NULL) {
-        if (re == NULL) {
-            PCRE2_UCHAR message[256];
-            int length = pcre2_get_error_message(
-                error_number,
-                message,
-                sizeof(message)
-            );
-            if (length >= 0) {
-                fprintf(stderr,
-                        "Pattern error at offset %zu: %.*s\n",
-                        (size_t)error_offset,
-                        length,
-                        (char *)message);
-            } 
-            else 
-            {
-                fprintf(stderr,
-                        "Pattern error at offset %zu: code %d\n",
-                        (size_t)error_offset,
-                        error_number);
-            }
-            exit(EXIT_FAILURE);
+    char ch;  
+    if (start == NULL || len == 0)
+        return false;
+    
+        // The first letter can only contain letters and '_'
+    ch = start[0];
+    if (isalpha(ch) || ch == '_')
+    {
+        // Check rest of the word
+        for (size_t i = 1; i < len; i++)
+        {
+            ch = start[i];
+            if (!isalnum(ch) && ch != '_')
+                return false;
         }
+        return true;
     }
-    return re;
+    return false;
 }
 
-static void MiniTclLexer_regex_rules(MiniTclLexer *lex)
+static bool isValidVar(const char *start, size_t len)
 {
-    MiniTclLexerRegex *regex = (MiniTclLexerRegex *)xmalloc(sizeof(MiniTclLexerRegex));
-    regex->name = MiniTclLexer_compile_regex("[A-Za-z_][A-Za-z0-9_]*\\Z");
-    regex->variable = MiniTclLexer_compile_regex("[A-Za-z_][A-Za-z0-9_]*|{[A-Za-z_][A-Za-z0-9_]*}");
-    lex->regex = regex;
+    size_t i;
+    char ch;
+    
+    if (start == NULL || len == 0)
+        return false;
+
+    ch = start[0];
+    if (ch == '{')
+    {
+        /* Check if var has at least {x} */
+        if (len < 3 || start[len - 1] != '}')
+            return false;
+        
+        /* Internal content */    
+        for (i = 1; i < len - 1; ++i)
+        {
+            ch = start[i];
+            if (!isalnum(ch) && ch != '_')
+                return false;
+        }
+        return true;
+    }
+
+    // First letter
+    if (!isalpha(ch) && ch != '_')
+        return false;
+    // Rest of var    
+    for (i = 1; i < len; ++i)
+    {
+        ch = start[i];
+        if (!isalnum(ch) && ch != '_')
+            return false;
+    }
+    return true;
 }
 
 /*-------------------------------------------*
@@ -299,39 +262,36 @@ static void MiniTclLexer_regex_rules(MiniTclLexer *lex)
 // Save content without start and end brackets
 static void MiniTclLexer_scan_command_subst(MiniTclLexer *lex)
 {
-    MiniTclLexer_consume(lex); // Consume first [
+    consume(lex); // Consume first [
     const char *start = lex->p;
     size_t len = 0, depth = 1;
-    while (!MiniTclLexer_ateos(lex))
+    while (!ateos(lex))
     {
-        const char ch = MiniTclLexer_peek(lex);
+        const char ch = peek(lex);
         if (ch == '\\' && lex->len - 1 > 0)
         {
-            MiniTclLexer_consume(lex);
-            MiniTclLexer_consume(lex);
+            consume(lex);
+            consume(lex);
             len += 2;
             continue;
         }
-        else if (MiniTclLexer_peek(lex) == '[')
+        else if (peek(lex) == '[')
             depth++;
-        else if (MiniTclLexer_peek(lex) == ']')
+        else if (peek(lex) == ']')
         {
             depth--;
             if (depth == 0)
             {
-                MiniTclLexer_consume(lex); // consume ]
-                MiniTclLexer_push_token(lex, (void *) start, len, MINITCL_TOK_COMMAND_SUBST);
+                consume(lex); // consume ]
+                push_token(lex, (void *) start, len, MINITCL_TOK_COMMAND_SUBST);
                 return;
             }
         } 
-        MiniTclLexer_consume(lex);
+        consume(lex);
         len++;
     }
-    if (MiniTclLexer_ateos(lex))
-    {
-        lex->status = MINITCL_LEXER_COMMAND_NOT_CLOSED;
-        MiniTclLexer_show_error(lex->status, lex->line, lex->column);   
-    }
+    if (ateos(lex))
+        MiniTclLexer_show_error("Sustitución de comando sin cerrar: ", lex->line, lex->column, start-1, len+1);
 }
 
 /*-------------------------------------------*
@@ -341,39 +301,36 @@ static void MiniTclLexer_scan_command_subst(MiniTclLexer *lex)
 // Save content without start and end brackets
 static void MiniTclLexer_scan_braced(MiniTclLexer *lex)
 {
-    MiniTclLexer_consume(lex); // Consume first {
+    consume(lex); // Consume first {
     const char *start = lex->p;
     size_t len = 0, depth = 1;
-    while (!MiniTclLexer_ateos(lex))
+    while (!ateos(lex))
     {
-        const char ch = MiniTclLexer_peek(lex);
+        const char ch = peek(lex);
         if (ch == '\\' && lex->len - 1 > 0)
         {
-            MiniTclLexer_consume(lex);
-            MiniTclLexer_consume(lex);
+            consume(lex);
+            consume(lex);
             len += 2;
             continue;
         }
-        else if (MiniTclLexer_peek(lex) == '{')
+        else if (peek(lex) == '{')
             depth++;
-        else if (MiniTclLexer_peek(lex) == '}')
+        else if (peek(lex) == '}')
         {
             depth--;
             if (depth == 0)
             {
-                MiniTclLexer_consume(lex); // consume }
-                MiniTclLexer_push_token(lex, (void *) start, len, MINITCL_TOK_BRACED);
+                consume(lex); // consume }
+                push_token(lex, (void *) start, len, MINITCL_TOK_BRACED);
                 return;
             }
         } 
-        MiniTclLexer_consume(lex);
+        consume(lex);
         len++;
     }
-    if (MiniTclLexer_ateos(lex))
-    {
-        lex->status = MINITCL_LEXER_BRACE_NOT_CLOSED;
-        MiniTclLexer_show_error(lex->status, lex->line, lex->column);   
-    }
+    if (ateos(lex))
+        MiniTclLexer_show_error("Palabra entre corchetes sin cerrar '{'", lex->line, lex->column, start-1, len+1); 
 }
 
 /*-------------------------------------------*
@@ -383,33 +340,30 @@ static void MiniTclLexer_scan_braced(MiniTclLexer *lex)
 // Save content without start and end brackets
 static void MiniTclLexer_scan_string(MiniTclLexer *lex)
 {
-    MiniTclLexer_consume(lex); // Consume first "
+    consume(lex); // Consume first "
     const char *start = lex->p;
     size_t len = 0;
-    while (!MiniTclLexer_ateos(lex))
+    while (!ateos(lex))
     {
-        const char ch = MiniTclLexer_peek(lex);    
+        const char ch = peek(lex);    
         if (ch == '\\' && lex->len - 1 > 0)
         {
-            MiniTclLexer_consume(lex);
-            MiniTclLexer_consume(lex);
+            consume(lex);
+            consume(lex);
             len += 2;
             continue;
         }
         else if (ch == '"')
         {
-            MiniTclLexer_consume(lex); // consume "
-            MiniTclLexer_push_token(lex, (void *) start, len, MINITCL_TOK_STRING);
+            consume(lex); // consume "
+            push_token(lex, (void *) start, len, MINITCL_TOK_STRING);
             return;
         }
-        MiniTclLexer_consume(lex);
+        consume(lex);
         len++;
     }
-    if (MiniTclLexer_ateos(lex))
-    {
-        lex->status = MINITCL_LEXER_QUOTE_NOT_CLOSED;
-        MiniTclLexer_show_error(lex->status, lex->line, lex->column);   
-    }
+    if (ateos(lex))
+        MiniTclLexer_show_error("Comilla sin cerrar '\"'", lex->line, lex->column, start-1, len+1); 
 }
 
 /*----------------------------------------------
@@ -420,24 +374,24 @@ static void MiniTclLexer_scan_newlines(MiniTclLexer *lex)
 {
     const char *start = lex->p;
     size_t len = 0;
-    while (!MiniTclLexer_ateos(lex) && MiniTclLexer_peek(lex) == '\n')
+    while (!ateos(lex) && peek(lex) == '\n')
     {
-        MiniTclLexer_consume(lex);
+        consume(lex);
         len++;
     }
-    MiniTclLexer_push_token(lex, (void *) start, len, MINITCL_TOK_NEWLINE);
+    push_token(lex, (void *) start, len, MINITCL_TOK_NEWLINE);
 }
 
 static void MiniTclLexer_scan_comment(MiniTclLexer *lex)
 {
-    while (!MiniTclLexer_ateos(lex) && MiniTclLexer_peek(lex) != '\n') 
-        MiniTclLexer_consume(lex);
+    while (!ateos(lex) && peek(lex) != '\n') 
+        consume(lex);
 }
 
 static void MiniTclLexer_scan_single(MiniTclLexer *lex, TokenType type)
 {
-    MiniTclLexer_push_token(lex, (void *) lex->p, 1, type);
-    MiniTclLexer_consume(lex);
+    push_token(lex, (void *) lex->p, 1, type);
+    consume(lex);
 }
 
 /*----------------------------------------------
@@ -446,100 +400,60 @@ static void MiniTclLexer_scan_single(MiniTclLexer *lex, TokenType type)
 
 static void MiniTclLexer_scan_variable(MiniTclLexer *lex)
 {
-    MiniTclLexer_consume(lex); // Consume $
+    consume(lex); // Consume $
+
     const char *start = lex->p;
-    int rc;
-    size_t size = 1024, len = 0;
-    char *chars = (char *)xmalloc(size);
-    memset(chars, 0, size);
+    size_t len = 0;
+    char ch;
     
-    // Copy string fragment handling escaped chars 
-    while (!MiniTclLexer_ateos(lex))
+    while (!ateos(lex))
     {
-        const char ch = MiniTclLexer_peek(lex);
-        if (MiniTclLexer_isVarStop(ch))
+        ch = peek(lex);
+        if (isSpace(ch) || isVarStop(ch))
             break;
-        if (len == size)
-        {
-            size *= 2;
-            chars = xrealloc(chars, size);
-        }
-        if (MiniTclLexer_peek(lex) == '\\')
-        {
-            MiniTclLexer_consume(lex);
-            chars[len++] = MiniTclLexer_peek(lex);
-            MiniTclLexer_consume(lex);            
-            continue;
-        }
-        chars[len++] = ch;
-        MiniTclLexer_consume(lex);
+        len++;
+        consume(lex);
     }
-    chars[len] = '\0'; 
 
-    // Check if it's a valid variable type
-    lex->match = pcre2_match_data_create_from_pattern(lex->regex->variable, NULL);
-    if (lex->match == NULL) 
-        die("PCRE2: Error creating match_data\n");
+    if (ateos(lex) || len == 0)  // Just a single '$'
+        MiniTclLexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1);    
 
-    rc = pcre2_match(
-        lex->regex->variable,                
-        (PCRE2_SPTR8)chars,                 
-        len,                                   
-        0,                                   
-        PCRE2_ANCHORED,  
-        lex->match,                          
-        NULL                                 
-    );               
-
-    if (rc <= 0)
+    if (isValidVar(start, len))
     {
-        xfree(chars);
-        fprintf(stderr, "Variable regex matching error\n");
-        return;
-    }
-    else 
-    {
-        PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(lex->match);
-        PCRE2_SIZE matched_len = ovector[1] - ovector[0];
-        if (matched_len == 0)
-            fprintf(stderr, "Expression produced an empty coincidence\n");
+        if (!ateos(lex) && peek(lex) == '(')
+        {
+            consume(lex); // Consume (
+            const char *idx_start = lex->p;
+            size_t idx_len = 0; 
+            bool closed = false;
+            
+            while (!ateos(lex))
+            {
+                if (peek(lex) == ')')
+                {
+                    closed = true;
+                    break;
+                }
+                idx_len++;
+                consume(lex);
+            }
+
+            if (ateos(lex) && !closed)
+                MiniTclLexer_show_error("Indice de arreglo sin cerrar '('", lex->line, lex->column, start-1, len+1); 
+
+            consume(lex); // Consume )
+            MiniTclArrayVar *array = (MiniTclArrayVar *)xmalloc(sizeof(MiniTclArrayVar));
+            array->name = start;
+            array->name_length = len;
+            array->index = idx_start;
+            array->index_length = idx_len;
+            push_token(lex, (void *)array, len + idx_len, MINITCL_TOK_ARRAY_VAR);
+        }
         else 
-        {
-            MiniTclLexer_pushAlloc(lex, chars);
-            lex->p += matched_len;
-            len = matched_len;
-        }
+            push_token(lex, (void *)start, len, MINITCL_TOK_VAR);
     }
-
-    // Check if it's an index array expression
-    if (!MiniTclLexer_ateos(lex) && MiniTclLexer_peek(lex) == '(')
-    {
-        MiniTclLexer_consume(lex); // Consume (
-        const char *idx_start = lex->p;
-        size_t idx_len = 0;
-        while(!MiniTclLexer_ateos(lex) && MiniTclLexer_peek(lex) != ')')
-        {
-            MiniTclLexer_consume(lex);
-            idx_len++;
-        }
-        if (MiniTclLexer_ateos(lex))
-        {
-            lex->status = MINITCL_LEXER_ARRAY_INDEX_NOT_CLOSED;
-            MiniTclLexer_show_error(lex->status, lex->line, lex->column);
-        }
-        MiniTclLexer_consume(lex); // Consume )
-        MiniTclArrayVar *array = (MiniTclArrayVar *)xmalloc(sizeof(MiniTclArrayVar));
-        memset(array, 0, sizeof(*array));
-        array->name = start;
-        array->name_length = len;
-        array->index = idx_start;
-        array->index_length = idx_len;
-        MiniTclLexer_push_token(lex, (void *)array, len + idx_len, MINITCL_TOK_ARRAY_VAR);
-    }
-    else 
-        MiniTclLexer_push_token(lex, (void *)start, len, MINITCL_TOK_VAR);
-    pcre2_match_data_free(lex->match);
-    lex->match = NULL;
+    else
+        MiniTclLexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1); 
 }
 
 /*----------------------------------------------
@@ -549,60 +463,30 @@ static void MiniTclLexer_scan_variable(MiniTclLexer *lex)
 static void MiniTclLexer_scan_word(MiniTclLexer *lex)
 {
     const char *start = lex->p;
-    int rc;
-    size_t len = 0, size = 1024;
-    char *chars = (char *)xmalloc(size);
-    memset(chars, 0, size);
-    while (!MiniTclLexer_ateos(lex))
+    size_t len = 0;
+
+    while (!ateos(lex))
     {
-        const char ch = MiniTclLexer_peek(lex);
-        if (MiniTclLexer_isspace(ch) ||  MiniTclLexer_isWordStop(ch))
-            break;
-        if (len == size)
+        const char ch = peek(lex);        
+        if (isSpace(ch) || isWordStop(ch))
+            break; 
+        if (ch == '\\')
         {
-            size *= 2;
-            chars = xrealloc(chars, size);
-        }
-        if (MiniTclLexer_peek(lex) == '\\')
-        {
-            MiniTclLexer_consume(lex);
-            chars[len++] = MiniTclLexer_peek(lex);
-            MiniTclLexer_consume(lex);            
+            consume(lex);      /* Consume '\' char */
+            if (ateos(lex))    
+                break;  // Improve lexerError
+            consume(lex);     
+            len+=2;
             continue;
         }
-        chars[len++] = ch;
-        MiniTclLexer_consume(lex);
+        len++;
+        consume(lex);
     }
-    chars[len] = '\0'; 
 
-    // Chck if token 
-    lex->match = pcre2_match_data_create_from_pattern(
-        lex->regex->name, 
-        NULL
-    );
-    rc = pcre2_match(
-        lex->regex->name,                
-        (PCRE2_SPTR8)chars,                 
-        len,                                   
-        0,                                   
-        PCRE2_ANCHORED,  
-        lex->match,                          
-        NULL                                 
-    );
-    if (rc <= 0)
-    {
-        xfree(chars);
-        fprintf(stderr, "Name regex matching error\n");
-        exit(EXIT_FAILURE);
-    }     
+    if (isValidIdentifier(start, len))
+        push_token(lex, (void *)start, len, MINITCL_TOK_NAME);    
     else 
-    {
-        MiniTclLexer_pushAlloc(lex, chars);
-        if (rc == PCRE2_ERROR_NOMATCH)
-            MiniTclLexer_push_token(lex, (void *)chars, len, MINITCL_TOK_TEXT);
-        else
-            MiniTclLexer_push_token(lex, (void *)chars, len, MINITCL_TOK_NAME);
-    }    
+        push_token(lex, (void *)start, len, MINITCL_TOK_TEXT);          
 }
 
 /*----------------------------------------------
@@ -612,15 +496,14 @@ static void MiniTclLexer_scan_word(MiniTclLexer *lex)
 MiniTclLexer *MiniTclLexer_tokenize(const char *source)
 {
     MiniTclLexer *lex = MiniTclLexer_create(source);
-    MiniTclLexer_regex_rules(lex);
-    while (!MiniTclLexer_ateos(lex))
+    while (!ateos(lex))
     {
         if (lex->count == lex->capacity)
             MiniTclLexer_grow_tokens(lex);
         
-        char ch = MiniTclLexer_peek(lex);
+        char ch = peek(lex);
         if (ch == ' ' || ch == '\t' || ch == '\r')
-            MiniTclLexer_consume(lex);
+            consume(lex);
         else if (ch == '\n')
             MiniTclLexer_scan_newlines(lex);
         else if (ch == ';')

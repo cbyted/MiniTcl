@@ -1,17 +1,15 @@
-# Test 1
 set x 10
 puts "x = $x"
 puts [expr {$x + 20}]
 set datos(nombre) Angel
 set x 1; incr x
-# comentario\nputs ok
+# comentario
+puts ok
 if {$x > 0} {puts {positivo}}
-puts $array(1)
-puts "hello"
-set ${variable} 10
-puts \{text\} \\n set a 100
-set a 1; set b 2
+puts "línea 1 \n línea 2"
+puts \{texto\}
 set usuarios(admin) Ana
-puts \"línea 1\nlínea 2\"
-set x 10 # comentario\nputs $x
-set $variable\{var\}
+set x 10 # comentario
+puts $x
+set a 1; set b 2
+

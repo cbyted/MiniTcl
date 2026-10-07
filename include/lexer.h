@@ -1,36 +1,6 @@
-#pragma once
-
-#define PCRE2_CODE_UNIT_WIDTH 8
-#include <pcre2.h>
+#pragma once 
+#include <ctype.h>
 #include "safeAlloc.h"
-
-/*---------------------------------------------- 
- * Lexer error handling
- *---------------------------------------------*/ 
-
-typedef enum
-{
-    MINITCL_LEXER_OK,
-    MINITCL_LEXER_ERROR,
-    MINITCL_LEXER_CANT_ESCAPE,
-    MINITCL_LEXER_BRACE_NOT_CLOSED,
-    MINITCL_LEXER_COMMAND_NOT_CLOSED,
-    MINITCL_LEXER_QUOTE_NOT_CLOSED,
-    MINITCL_LEXER_ARRAY_INDEX_NOT_CLOSED,
-    MINITCL_LEXER_NO_COMMAND_CONTEXT,
-    MINITCL_LEXER_NO_BRACE_CONTEXT,
-    MINITCL_LEXER_NO_ARRAY_CONTEXT,
-    MINITCL_LEXER_NO_QUOTE_CONTEXT,
-    MINITCL_LEXER_NO_SCRIPT_CONTEXT
-} MiniTclLexerStatus;
-
-typedef struct 
-{
-    MiniTclLexerStatus error;
-    size_t line;
-    size_t column;
-    const char *msg;
-} MiniTclLexerError;
 
 /*---------------------------------------------- 
  * Lexical analysis
@@ -73,12 +43,6 @@ typedef struct MintclToken_t
     TokenType tokType; 
 } MiniTclToken;
 
-/* Regex operations for simple tokens */
-typedef struct 
-{
-    pcre2_code *name;       
-    pcre2_code *variable;  
-} MiniTclLexerRegex;
 
 /* Lexer information */
 typedef struct 
@@ -90,23 +54,12 @@ typedef struct
     size_t line;                 // Token line
     size_t column;               // Token columns
     size_t index;                // Token index
-    size_t alloc_size;           // Allocated chunks
-    size_t alloc_count;          // Total of allocated chunks
-    char **alloc;                // Allocated cucks for words
     MiniTclToken *tokens;        // List of tokens
-    MiniTclLexerRegex *regex;    // Regex rules
-    pcre2_match_data *match;     // Regex match
-    MiniTclLexerStatus status;   // Lexer operation status
 } MiniTclLexer;
 
-/*----------------------------------------------
-    LEXER PUBLIC API
------------------------------------------------*/
 
-// Create and delete
-MiniTclLexer *MiniTclLexer_create(const char *source);
+// Delete lexer
 void MiniTclLexer_destroy(MiniTclLexer *lex);
-
 void printLexerTokens(MiniTclLexer *lex);
 
 // Tokenize 

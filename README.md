@@ -1,52 +1,68 @@
-## 8. Contrato del analizador léxico
+# Compilador de Tcl en C
 
-El lexer principal debe producir estos tokens:
+Este proyecto es un compilador para el lenguaje Tcl, desarrollado en C. Actualmente incluye un lexer para el lenguaje y un lexer independiente para los argumentos del comando `expr`. Estas dos etapas del compilador parecen funcionar para el lenguaje definido, aunque también considero que hay optimizaciones que se pueden hacer.
+
+## Estructura del proyecto
+
+- `include/`: archivos de cabecera.
+- `src/`: código fuente del compilador.
+- `test/`: pruebas escritas en Tcl.
+- `Makefile`: reglas para compilar, limpiar y generar una compilación de depuración.
+- `README.md`: este archivo.
+
+## Compilar
+
+Desde la raíz del proyecto, ejecuta:
+
+```sh
+make
 ```
+
+El comando crea el ejecutable `minitcl` en la raíz del proyecto. Los demás archivos generados durante la compilación se guardan en la carpeta `bin/`, que se crea automáticamente si no existe.
+
+Para compilar con opciones útiles para depuración y uso de GDB:
+
+```sh
+make debug
 ```
-| Token | Ejemplo | Valor guardado |
-|---|---|---|
-| `NAME` | `set`, `total_1` | texto |
-| `TEXT` | `-nonewline`, `3.14` | texto |
-| `VAR` | `$total` | nombre sin `$` |
-| `ARRAY_VAR` | `$datos(3)` | `(nombre, índice)` |
-| `BRACED` | `{set x 1}` | contenido sin llaves |
-| `STRING` | `"hola $x"` | contenido sin comillas |
-| `COMMAND_SUBST` | `[expr {$x+1}]` | contenido sin corchetes |
-| `NEWLINE` | uno o más saltos | texto de los saltos |
-| `SEMI` | `;` | `;` |
+
+## Limpiar los archivos generados
+
+Para eliminar los archivos generados por la compilación, ejecuta:
+
+```sh
+make clean
 ```
+
+## Ejecutar pruebas
+
+Las pruebas de código fuente de Tcl se encuentran en `test/`. Para ejecutar una, usa el ejecutable desde la raíz del proyecto y proporciona la ruta del archivo de prueba:
+
+```sh
+./minitcl test/lexer/file.tcl
 ```
-### Prioridad de reconocimiento
 
-1. espacios horizontales;
-2. saltos de línea;
-3. `;`;
-4. comentarios `#...`;
-5. bloques balanceados `{...}`;
-6. comandos balanceados `[...]`;
-7. cadenas `"..."`;
-8. variables `$x` y `$a(i)`;
-9. palabras `NAME`/`TEXT`;
-10. error.
+Sustituye `file.tcl` por el nombre de la prueba a ejecutar. 
 
-Para mantener compatibilidad con el lexer inicial, `#` inicia un comentario siempre que aparece fuera de llaves, corchetes o comillas. Esto es una simplificación deliberada respecto de Tcl completo.
+Puedes agregar esta sección al README para aclarar cómo se prueban actualmente las expresiones de `expr`:
 
-lexer que debe realizar el estudiante
+## Pruebas del lexer de `expr`
 
+A diferencia de las pruebas generales de Tcl, las pruebas del lexer y parser de `expr` todavía no están en archivos separados. Por ahora, se ejecutan desde el propio programa mediante un arreglo de cadenas llamado `exprTests`, que contiene expresiones de prueba, por ejemplo:
 
-Implemente `MiniTclLexer.tokenize(source)` sin utilizar generadores de analizadores léxicos. Puede usar expresiones regulares para nombres y números, pero los delimitadores balanceados deben recorrerse carácter a carácter.
+```c
+const char *exprTests[] =
+{
+    "$VAR + 1.23 * 2 ** 3",
+    "a >= b && a != 0",
+    "a <= b || a > b && a < 100",
+    "a = min(12, 1.23) + max(2, 4)",
+    "!true || false && true",
+    "8 / 2 + 7 % 3 - 1",
+    "sqrt(9) + abs(-2) * min(1, 2)",
+    "$x + max(1, 2) * 3 >= 4 && !false || true",
+    "($VAR ** 2 + 1.23) / 2 >= min(12, 4) && true"
+};
+```
 
-### Requisitos funcionales
-
-1. Registrar línea, columna e índice absoluto de cada token.
-2. Ignorar espacio, tabulador y retorno de carro.
-3. Agrupar saltos consecutivos en un `NEWLINE`.
-4. ignorar comentarios hasta el salto de línea, conservando el `NEWLINE` posterior;
-5. admitir anidamiento de `{...}` y `[...]`;
-6. no cerrar un grupo cuando el delimitador esté escapado;
-7. conservar los escapes como dos caracteres para una fase posterior;
-8. reconocer identificadores con `[A-Za-z_][A-Za-z0-9_]*`;
-9. informar delimitadores sin cerrar y variables mal formadas;
-10. finalizar sin token `EOF`, para ser compatible con el parser entregado.
-
-> **Separación de responsabilidades:** el lexer de MiniTcl no tokeniza los operadores dentro de `{...}`. El comando `expr` entrega ese contenido a un segundo lexer especializado.
+Estas expresiones se añadieron como pruebas rápidas durante el desarrollo. Más adelante se pueden trasladar a archivos de prueba independientes para organizarlas mejor.
