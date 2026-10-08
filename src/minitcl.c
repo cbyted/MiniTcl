@@ -46,8 +46,6 @@ const char *exprTests[] =
     "($VAR ** 2 + 1.23) / 2 >= min(12, 4) && true"
 };
 
-
-
 int main(int argc, char **argv)
 {
     if (argc < 2)
@@ -59,7 +57,7 @@ int main(int argc, char **argv)
 
     // Tcl Lexer quick test
     printf("MiniTcl lexer test\n");
-    MiniTclLexer *lex = MiniTclLexer_tokenize(file);
+    MiniTclLexer *lex = lexer_tokenize(file);
     printLexerTokens(lex);
 
     printf("\n\n");
@@ -71,7 +69,7 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < test_count; i++)
     {
         printf("\nExpr test: %s\n", exprTests[i]);
-        MiniTclExprLexer *lexExpr = MiniTclExprLexer_tokenize(exprTests[i], strlen(exprTests[i]));
+        MiniTclExprLexer *lexExpr = exprLexer_tokenize(exprTests[i], strlen(exprTests[i]));
 
         if (lexExpr == NULL)
         {
@@ -80,14 +78,14 @@ int main(int argc, char **argv)
         }
         printLexerExprTokens(lexExpr->tokens, lexExpr->count);
         xfree(lexExpr->tokens);
-        MiniTclExprLexer_destroy(lexExpr);
+        exprLexer_destroy(lexExpr);
     }
 
     // Free tokens 
     xfree(lex->tokens);
 
     // Destroy structs 
-    MiniTclLexer_destroy(lex);
+    lexer_destroy(lex);
 
     return EXIT_SUCCESS;
 }

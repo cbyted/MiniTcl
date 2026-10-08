@@ -56,6 +56,6 @@ typedef struct
 } MiniTclExprLexer;
 
 
-void MiniTclExprLexer_destroy(MiniTclExprLexer *lexExpr);
+void exprLexer_destroy(MiniTclExprLexer *lexExpr);
 void printLexerExprTokens(MiniTclExprToken *exprTokens, size_t count);
-MiniTclExprLexer *MiniTclExprLexer_tokenize(const char *expr, size_t len);
+MiniTclExprLexer *exprLexer_tokenize(const char *expr, size_t len);

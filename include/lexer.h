@@ -59,8 +59,8 @@ typedef struct
 
 
 // Delete lexer
-void MiniTclLexer_destroy(MiniTclLexer *lex);
+void lexer_destroy(MiniTclLexer *lex);
 void printLexerTokens(MiniTclLexer *lex);
 
 // Tokenize 
-MiniTclLexer *MiniTclLexer_tokenize(const char *source);
+MiniTclLexer *lexer_tokenize(const char *source);

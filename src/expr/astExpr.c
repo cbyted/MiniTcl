@@ -1,5 +1,25 @@
 #include "../../include/astExpr.h"
 
+/*----------------------------------------------
+    PUSHING NODE TO ARRAY OF TREE NODES
+-----------------------------------------------*/
+
+void push_tree_node(TreeNodes *tree_nodes, ExprNode *node)
+{
+    if (tree_nodes->count == tree_nodes->capacity)
+    {
+        tree_nodes->capacity *= 2;
+        size_t newsize= tree_nodes->capacity * sizeof(*tree_nodes);
+        tree_nodes->nodes = (ExprNode **)xrealloc(tree_nodes->nodes, newsize);
+    }
+    tree_nodes->nodes[tree_nodes->count++] = node;
+}
+
+/*----------------------------------------------
+    CREATE AND RETURN TREE NODES 
+-----------------------------------------------*/
+
+
 static ExprNode *create_node(ExprNodeType type)
 {
     ExprNode *node = (ExprNode *)xmalloc(sizeof(ExprNode));

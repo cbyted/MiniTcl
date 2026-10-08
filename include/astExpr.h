@@ -121,6 +121,21 @@ typedef struct ExprNode
     };
 } ExprNode;
 
+
+/*
+ * This struct saves the following fields:
+ *  - Nodes: Array of all tree nodes (It's just to free them later)
+ *  - Count: Number of nodes 
+ *  - Capacity: Used for malloc allocation or reallocation
+ */
+
+typedef struct 
+{ 
+    ExprNode **nodes;
+    size_t count;
+    size_t capacity;
+} TreeNodes;
+
 /*
  * Ast methods to create tree nodes
  */
@@ -131,3 +146,6 @@ ExprNode *expr_node_number(NumberType type, double number);
 ExprNode *expr_node_variable(const char *name, size_t len);
 ExprNode *expr_node_boolean(int value);
 ExprNode *expr_node_call(const char *name, size_t len, NodeList args);
+
+/* Push ast node to TreeNodes->nodes */
+void push_tree_node(TreeNodes *tree_nodes, ExprNode *node);

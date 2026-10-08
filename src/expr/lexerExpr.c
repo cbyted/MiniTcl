@@ -1,6 +1,6 @@
 #include "../../include/lexerExpr.h"
 
-static MiniTclExprLexer *MiniTclExprLexer_create(const char *expr, size_t len)
+static MiniTclExprLexer *exprLexer_create(const char *expr, size_t len)
 {
     MiniTclExprLexer *lexExpr = (MiniTclExprLexer *)xmalloc(sizeof(MiniTclExprLexer));
     lexExpr->p = expr;
@@ -12,7 +12,12 @@ static MiniTclExprLexer *MiniTclExprLexer_create(const char *expr, size_t len)
     return lexExpr;
 }
 
-void MiniTclExprLexer_destroy(MiniTclExprLexer *lexExpr)
+static MiniTclExprToken *exprLexer_grow_tokens(MiniTclExprToken *tokens, size_t newsize)
+{
+    return (MiniTclExprToken *)xrealloc(tokens, newsize);
+}
+
+void exprLexer_destroy(MiniTclExprLexer *lexExpr)
 {
     if (!lexExpr)
         return;
@@ -315,7 +320,7 @@ static bool isValidCall(const char *start, size_t len)
 -----------------------------------------------*/
 
 // Diseño provisional (Debe mejorar)
-static void MiniTclExprLexer_show_error(const char *error, size_t index, const char *fragment, size_t len)
+static void exprLexer_show_error(const char *error, size_t index, const char *fragment, size_t len)
 {
     die("%s [index=%zu]: %.*s", error, index, len, fragment);
 }
@@ -342,7 +347,13 @@ static void MiniTclExprLexer_show_error(const char *error, size_t index, const c
  *  - true|false  supported
  *  - yes/no      supported
  *  - on/off      supported
+ *
+ *  Function names:
+ *      Any identifier that matches the valid call syntax is interpreted as a
+ *      function call name. The compiler checks later whether the call is valid.
+ *      
  */
+
 
 static void expr_scan_word(MiniTclExprLexer *lexExpr)
 {
@@ -377,7 +388,7 @@ static void expr_scan_word(MiniTclExprLexer *lexExpr)
         return;
     }
     else
-        MiniTclExprLexer_show_error("La palabra escaneada no esta soportada", lexExpr->index, start-1, len+1);
+        exprLexer_show_error("La palabra escaneada no esta soportada", lexExpr->index, start-1, len+1);
 }
 
 /*
@@ -404,12 +415,12 @@ static void expr_scan_var(MiniTclExprLexer *lexExpr)
     }
 
     if (len == 1) 
-        MiniTclExprLexer_show_error("Un solo '$' no es una variable valida", lexExpr->index, start - 1, 1);
+        exprLexer_show_error("Un solo '$' no es una variable valida", lexExpr->index, start - 1, 1);
 
     if (isValidVar(start, len)) 
         push_token(lexExpr, start, len, MINITCL_TOK_EXPR_VAR);
     else 
-        MiniTclExprLexer_show_error("Variable mal formada", lexExpr->index, start - 1, len + 1);
+        exprLexer_show_error("Variable mal formada", lexExpr->index, start - 1, len + 1);
 }
 
 
@@ -425,12 +436,19 @@ static void expr_scan_var(MiniTclExprLexer *lexExpr)
  *   ()             supported
  */
 
-MiniTclExprLexer *MiniTclExprLexer_tokenize(const char *expr, size_t len)
+MiniTclExprLexer *exprLexer_tokenize(const char *expr, size_t len)
 {
-    MiniTclExprLexer *lexExpr = MiniTclExprLexer_create(expr, len);
+    MiniTclExprLexer *lexExpr = exprLexer_create(expr, len);
 
     while (!ateoe(lexExpr))
     {
+        if (lexExpr->count == lexExpr->capacity)
+        {
+            lexExpr->capacity *= 2;
+            size_t newsize = lexExpr->capacity * sizeof(*lexExpr->tokens);
+            lexExpr->tokens = exprLexer_grow_tokens(lexExpr->tokens, newsize);
+        }
+
         const char ch = peek(lexExpr);
         switch (ch)
         {

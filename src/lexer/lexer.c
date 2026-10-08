@@ -5,7 +5,7 @@
     LEXER CONSTRUCTOR
 -----------------------------------------------*/
 
-static MiniTclLexer *MiniTclLexer_create(const char *source)
+static MiniTclLexer *lexer_create(const char *source)
 {
     MiniTclLexer *lex = (MiniTclLexer *)xmalloc(sizeof(MiniTclLexer));
     memset(lex, 0, sizeof(*lex));
@@ -24,7 +24,7 @@ static MiniTclLexer *MiniTclLexer_create(const char *source)
     Allocate more memory for tokens
 -----------------------------------------------*/
 
-static void MiniTclLexer_grow_tokens(MiniTclLexer *lex)
+static void lexer_grow_tokens(MiniTclLexer *lex)
 {
     lex->capacity *= 2;
     size_t size = lex->capacity * sizeof(MiniTclLexer);
@@ -35,7 +35,7 @@ static void MiniTclLexer_grow_tokens(MiniTclLexer *lex)
     LEXER DESTRUCTOR
 -----------------------------------------------*/
 
-void MiniTclLexer_destroy(MiniTclLexer *lex)
+void lexer_destroy(MiniTclLexer *lex)
 {
     if (!lex) 
         return;
@@ -102,7 +102,7 @@ void printLexerTokens(MiniTclLexer *lex)
 -----------------------------------------------*/
 
 // Debe mejorar (Versión inicial)
-static void MiniTclLexer_show_error(const char *error, size_t line, size_t column, const char *fragment, size_t len)
+static void lexer_show_error(const char *error, size_t line, size_t column, const char *fragment, size_t len)
 {
     die("%s [line=%zu, col=%zu]: %.*s", error, line, column, len, fragment);
 }
@@ -260,7 +260,7 @@ static bool isValidVar(const char *start, size_t len)
 ---------------------------------------------*/
 
 // Save content without start and end brackets
-static void MiniTclLexer_scan_command_subst(MiniTclLexer *lex)
+static void scan_command_subst(MiniTclLexer *lex)
 {
     consume(lex); // Consume first [
     const char *start = lex->p;
@@ -291,7 +291,7 @@ static void MiniTclLexer_scan_command_subst(MiniTclLexer *lex)
         len++;
     }
     if (ateos(lex))
-        MiniTclLexer_show_error("Sustitución de comando sin cerrar: ", lex->line, lex->column, start-1, len+1);
+        lexer_show_error("Sustitución de comando sin cerrar: ", lex->line, lex->column, start-1, len+1);
 }
 
 /*-------------------------------------------*
@@ -299,7 +299,7 @@ static void MiniTclLexer_scan_command_subst(MiniTclLexer *lex)
 ---------------------------------------------*/
 
 // Save content without start and end brackets
-static void MiniTclLexer_scan_braced(MiniTclLexer *lex)
+static void scan_braced(MiniTclLexer *lex)
 {
     consume(lex); // Consume first {
     const char *start = lex->p;
@@ -330,7 +330,7 @@ static void MiniTclLexer_scan_braced(MiniTclLexer *lex)
         len++;
     }
     if (ateos(lex))
-        MiniTclLexer_show_error("Palabra entre corchetes sin cerrar '{'", lex->line, lex->column, start-1, len+1); 
+        lexer_show_error("Palabra entre corchetes sin cerrar '{'", lex->line, lex->column, start-1, len+1); 
 }
 
 /*-------------------------------------------*
@@ -338,7 +338,7 @@ static void MiniTclLexer_scan_braced(MiniTclLexer *lex)
 ---------------------------------------------*/
 
 // Save content without start and end brackets
-static void MiniTclLexer_scan_string(MiniTclLexer *lex)
+static void scan_string(MiniTclLexer *lex)
 {
     consume(lex); // Consume first "
     const char *start = lex->p;
@@ -363,14 +363,14 @@ static void MiniTclLexer_scan_string(MiniTclLexer *lex)
         len++;
     }
     if (ateos(lex))
-        MiniTclLexer_show_error("Comilla sin cerrar '\"'", lex->line, lex->column, start-1, len+1); 
+        lexer_show_error("Comilla sin cerrar '\"'", lex->line, lex->column, start-1, len+1); 
 }
 
 /*----------------------------------------------
     Scan speacial: //, \n, \\n, #comment
 -----------------------------------------------*/
 
-static void MiniTclLexer_scan_newlines(MiniTclLexer *lex)
+static void scan_newlines(MiniTclLexer *lex)
 {
     const char *start = lex->p;
     size_t len = 0;
@@ -382,13 +382,13 @@ static void MiniTclLexer_scan_newlines(MiniTclLexer *lex)
     push_token(lex, (void *) start, len, MINITCL_TOK_NEWLINE);
 }
 
-static void MiniTclLexer_scan_comment(MiniTclLexer *lex)
+static void scan_comment(MiniTclLexer *lex)
 {
     while (!ateos(lex) && peek(lex) != '\n') 
         consume(lex);
 }
 
-static void MiniTclLexer_scan_single(MiniTclLexer *lex, TokenType type)
+static void scan_single(MiniTclLexer *lex, TokenType type)
 {
     push_token(lex, (void *) lex->p, 1, type);
     consume(lex);
@@ -398,7 +398,7 @@ static void MiniTclLexer_scan_single(MiniTclLexer *lex, TokenType type)
     Lexer scan variable       
 -----------------------------------------------*/
 
-static void MiniTclLexer_scan_variable(MiniTclLexer *lex)
+static void scan_variable(MiniTclLexer *lex)
 {
     consume(lex); // Consume $
 
@@ -416,7 +416,7 @@ static void MiniTclLexer_scan_variable(MiniTclLexer *lex)
     }
 
     if (ateos(lex) || len == 0)  // Just a single '$'
-        MiniTclLexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1);    
+        lexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1);    
 
     if (isValidVar(start, len))
     {
@@ -439,7 +439,7 @@ static void MiniTclLexer_scan_variable(MiniTclLexer *lex)
             }
 
             if (ateos(lex) && !closed)
-                MiniTclLexer_show_error("Indice de arreglo sin cerrar '('", lex->line, lex->column, start-1, len+1); 
+                lexer_show_error("Indice de arreglo sin cerrar '('", lex->line, lex->column, start-1, len+1); 
 
             consume(lex); // Consume )
             MiniTclArrayVar *array = (MiniTclArrayVar *)xmalloc(sizeof(MiniTclArrayVar));
@@ -453,14 +453,14 @@ static void MiniTclLexer_scan_variable(MiniTclLexer *lex)
             push_token(lex, (void *)start, len, MINITCL_TOK_VAR);
     }
     else
-        MiniTclLexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1); 
+        lexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1); 
 }
 
 /*----------------------------------------------
     Lexer scan word
 -----------------------------------------------*/
 
-static void MiniTclLexer_scan_word(MiniTclLexer *lex)
+static void scan_word(MiniTclLexer *lex)
 {
     const char *start = lex->p;
     size_t len = 0;
@@ -493,33 +493,33 @@ static void MiniTclLexer_scan_word(MiniTclLexer *lex)
     Lexer main function
 -----------------------------------------------*/
 
-MiniTclLexer *MiniTclLexer_tokenize(const char *source)
+MiniTclLexer *lexer_tokenize(const char *source)
 {
-    MiniTclLexer *lex = MiniTclLexer_create(source);
+    MiniTclLexer *lex = lexer_create(source);
     while (!ateos(lex))
     {
         if (lex->count == lex->capacity)
-            MiniTclLexer_grow_tokens(lex);
+            lexer_grow_tokens(lex);
         
         char ch = peek(lex);
         if (ch == ' ' || ch == '\t' || ch == '\r')
             consume(lex);
         else if (ch == '\n')
-            MiniTclLexer_scan_newlines(lex);
+            scan_newlines(lex);
         else if (ch == ';')
-            MiniTclLexer_scan_single(lex, MINITCL_TOK_SEMICOLON);
+            scan_single(lex, MINITCL_TOK_SEMICOLON);
         else if (ch == '#')
-            MiniTclLexer_scan_comment(lex);
+            scan_comment(lex);
         else if (ch == '[')
-            MiniTclLexer_scan_command_subst(lex);
+            scan_command_subst(lex);
         else if (ch == '{')
-            MiniTclLexer_scan_braced(lex);
+            scan_braced(lex);
         else if (ch == '"')
-            MiniTclLexer_scan_string(lex);
+            scan_string(lex);
         else if (ch == '$')
-            MiniTclLexer_scan_variable(lex);
+            scan_variable(lex);
         else 
-            MiniTclLexer_scan_word(lex);
+            scan_word(lex);
     }
     return lex;
 }
