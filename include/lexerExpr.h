@@ -48,8 +48,10 @@ typedef struct
 
 typedef struct 
 {
+    const char *source;
     const char *p;
     size_t len;
+    size_t line;
     size_t index;
     size_t count;
     size_t capacity;
@@ -59,4 +61,14 @@ typedef struct
 
 void exprLexer_destroy(MiniTclExprLexer *lexExpr);
 void printLexerExprTokens(MiniTclExprToken *exprTokens, size_t count);
-MiniTclExprLexer *exprLexer_tokenize(const char *expr, size_t len);
+
+/*
+ * Tokenizes the arguments of an `expr` command.
+ *
+ * Parameters:
+ *   expr - The contents of the `expr` command.
+ *   len  - The length of `expr`.
+ *   line - The source line where the command was encountered.
+ */
+
+MiniTclExprLexer *exprLexer_tokenize(const char *expr, size_t len, size_t line);

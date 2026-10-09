@@ -1,10 +1,12 @@
 #include "../../include/lexerExpr.h"
 
-static MiniTclExprLexer *exprLexer_create(const char *expr, size_t len)
+static MiniTclExprLexer *exprLexer_create(const char *expr, size_t len, size_t line)
 {
     MiniTclExprLexer *lexExpr = (MiniTclExprLexer *)xmalloc(sizeof(MiniTclExprLexer));
+    lexExpr->source = expr;
     lexExpr->p = expr;
     lexExpr->len = len;
+    lexExpr->line = line;
     lexExpr->index = 0;
     lexExpr->count = 0;
     lexExpr->capacity = 128;
@@ -140,7 +142,6 @@ static bool isSpace(char ch)
             return false;
     }
 }
-
 
 /*
  * Check if character is not longer a valid numberic symbol or 
@@ -315,16 +316,6 @@ static bool isValidCall(const char *start, size_t len)
     return true;
 }
 
-/*----------------------------------------------
-    LEXER ERROR HANDLING 
------------------------------------------------*/
-
-// Diseño provisional (Debe mejorar)
-static void exprLexer_show_error(const char *error, size_t index, const char *fragment, size_t len)
-{
-    die("%s [index=%zu]: %.*s", error, index, len, fragment);
-}
-
 /*------------------------------------------------* 
  *  Expr lexer: scanning tokens
  *------------------------------------------------*/  
@@ -358,6 +349,7 @@ static void exprLexer_show_error(const char *error, size_t index, const char *fr
 static void expr_scan_word(MiniTclExprLexer *lexExpr)
 {
     const char *start = lexExpr->p;
+    size_t start_line = lexExpr->line, start_col = lexExpr->index;
     size_t len = 0;
     char ch;
 
@@ -388,7 +380,15 @@ static void expr_scan_word(MiniTclExprLexer *lexExpr)
         return;
     }
     else
-        exprLexer_show_error("La palabra escaneada no esta soportada", lexExpr->index, start-1, len+1);
+    {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lexExpr->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lexExpr->source, "Word not supported", INVALID_WORD, span);
+    }
 }
 
 /*
@@ -403,6 +403,7 @@ static void expr_scan_var(MiniTclExprLexer *lexExpr)
     consume(lexExpr);
     const char *start = lexExpr->p - 1; // Include '$'
     size_t len = 1;
+    size_t start_line = lexExpr->line, start_col = lexExpr->index;
     char ch;
 
     while (!ateoe(lexExpr)) 
@@ -414,13 +415,29 @@ static void expr_scan_var(MiniTclExprLexer *lexExpr)
         len++;
     }
 
-    if (len == 1) 
-        exprLexer_show_error("Un solo '$' no es una variable valida", lexExpr->index, start - 1, 1);
+    if (len == 1)
+     {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lexExpr->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lexExpr->source, "'$' is not a valid variable", INVALID_VARIABLE, span);
+    }
 
     if (isValidVar(start, len)) 
         push_token(lexExpr, start, len, MINITCL_TOK_EXPR_VAR);
-    else 
-        exprLexer_show_error("Variable mal formada", lexExpr->index, start - 1, len + 1);
+    else
+    {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lexExpr->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lexExpr->source, "Malformed variable", INVALID_VARIABLE, span);
+    }
 }
 
 
@@ -436,9 +453,9 @@ static void expr_scan_var(MiniTclExprLexer *lexExpr)
  *   ()             supported
  */
 
-MiniTclExprLexer *exprLexer_tokenize(const char *expr, size_t len)
+MiniTclExprLexer *exprLexer_tokenize(const char *expr, size_t len, size_t line)
 {
-    MiniTclExprLexer *lexExpr = exprLexer_create(expr, len);
+    MiniTclExprLexer *lexExpr = exprLexer_create(expr, len, line);
 
     while (!ateoe(lexExpr))
     {

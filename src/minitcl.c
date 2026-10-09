@@ -43,7 +43,7 @@ const char *exprTests[] =
     "!true || false && true", 
     "sqrt(9) + abs(-2) * min(1, 2)",
     "$x + max(1, 2) * 3 >= 4 && !false || true",
-    "($VAR ** 2 + 1.23) / 2 >= min(12, 4) && true"
+    "($VAR ** 2 + 1.23) / 2 >= min(12, 4) && true",
 };
 
 int main(int argc, char **argv)
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < test_count; i++)
     {
         printf("\nExpr test: %s\n", exprTests[i]);
-        MiniTclExprLexer *lexExpr = exprLexer_tokenize(exprTests[i], strlen(exprTests[i]));
+        MiniTclExprLexer *lexExpr = exprLexer_tokenize(exprTests[i], strlen(exprTests[i]), i);
 
         if (lexExpr == NULL)
         {

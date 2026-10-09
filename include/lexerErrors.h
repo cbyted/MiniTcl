@@ -28,6 +28,9 @@ typedef enum
  *  - start_col:  Column where the token begins
  *  - end_line:   Line where the token ends
  *  - end_col:    Column where the token ends
+ * 
+ * IMPORTANT: The lexer of expr command doesn't store information
+ * like column or line. 
  */ 
  
 typedef struct 
