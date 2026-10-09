@@ -54,6 +54,13 @@ typedef struct
     errorSpan span;
 } LexerError;
 
-
-// Receive error information and display the error message
+/*
+ * Reports a lexer error, including the relevant source location.
+ *
+ * Parameters:
+ *   source - Source file.
+ *   msg    - Error message to display.
+ *   code   - Error code to identify the type of error.
+ *   span   - Source span associated with the error.
+ */
 void lexer_error(const char *source, const char *msg, ErrorCode code, errorSpan span);

@@ -4,8 +4,10 @@
 #include "lexerExpr.h"
 
 /*
- * Abstract Syntaxt Tree for Tcl expr command
+ * Defines the abstract syntax tree structures used to represent Tcl `expr`
+ * commands.
  */
+
 
 typedef struct ExprNode ExprNode;
 
@@ -33,11 +35,12 @@ typedef enum
 
 
 /*
- * Tcl doesn't have type numbers. But this enum 
- * is necessary to access the correct number in 
- * NumberNode 
+ * Identifies the numeric representation stored in a NumberNode.
+ * Tcl has a single numeric type (WORD), but the parser needs to distinguish integers
+ * from real numbers to access the correct union member.
  */
-typedef enum 
+
+typedef enum
 {
     INT,
     REAL
@@ -45,10 +48,15 @@ typedef enum
 
 
 /*
- * List of tree nodes 
+ * Stores a collection of tree nodes.
+ *
+ * Fields:
+ *   nodes    - Array of pointers to the nodes.
+ *   count    - Number of nodes currently stored.
+ *   capacity - Allocated capacity of the node array.
  */
 
-typedef struct 
+typedef struct
 {
     ExprNode **nodes;
     size_t count;
@@ -56,10 +64,7 @@ typedef struct
 } NodeList;
 
 
-/*
- * Definition of each tree node 
- */
-
+/* Represents a binary operation. */
 typedef struct
 {
     ExprTokenType op;
@@ -67,34 +72,39 @@ typedef struct
     ExprNode *right;
 } BinaryNode;
 
-typedef struct 
+/* Represents a unary operation. */
+typedef struct
 {
     ExprTokenType op;
     ExprNode *operand;
 } UnaryNode;
 
-typedef struct 
+/* Stores an integer or real number. */
+typedef struct
 {
     NumberType type;
-    union 
+    union
     {
         long long int integer;
         double real;
     };
 } NumberNode;
 
+/* Represents a variable by its name and length. */
 typedef struct
 {
     const char *name;
     size_t len;
 } VariableNode;
 
-typedef struct 
+/* Represents a Boolean value: 0 for FALSE, 1 for TRUE. */
+typedef struct
 {
-    int value; /* 0 || 1 */ 
+    int value;
 } BooleanNode;
 
-typedef struct 
+/* Represents a function call, including its name and arguments. */
+typedef struct
 {
     const char *name;
     size_t len;
@@ -102,15 +112,17 @@ typedef struct
 } CallNode;
 
 /*
- * Tree node structure:
- *  - Type
- *  - Content
+ * Represents a node of the 'expr' tree. The node type determines which
+ * member of the content union is used.
+ *
+ * Fields:
+ *   type - Type of node.
  */
 
-typedef struct ExprNode 
+typedef struct ExprNode
 {
     ExprNodeType type;
-    union 
+    union
     {
         BinaryNode binary;
         UnaryNode unary;
@@ -121,20 +133,22 @@ typedef struct ExprNode
     };
 } ExprNode;
 
-
 /*
- * This struct saves the following fields:
- *  - Nodes: Array of all tree nodes (It's just to free them later)
- *  - Count: Number of nodes 
- *  - Capacity: Used for malloc allocation or reallocation
+ * Store 'expr' tree's nodes so they can be released together.
+ *
+ * Fields:
+ *   nodes    - Array of pointers to the tree's nodes.
+ *   count    - Number of nodes currently stored.
+ *   capacity - Allocated capacity of the node array.
  */
 
-typedef struct 
-{ 
+typedef struct
+{
     ExprNode **nodes;
     size_t count;
     size_t capacity;
 } TreeNodes;
+
 
 /*
  * Ast methods to create tree nodes

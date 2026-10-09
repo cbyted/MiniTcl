@@ -1,5 +1,6 @@
 #include "../../include/lexerErrors.h"
 
+/* Convert the error code into the corresponding message */
 static const char *code_to_string(ErrorCode code)
 {
     switch (code)
@@ -23,6 +24,7 @@ static const char *code_to_string(ErrorCode code)
     }
 }
 
+/* Create and display the error message */
 static void lexer_fatal(LexerError *error, const char *source)
 {
     fprintf(
@@ -34,7 +36,7 @@ static void lexer_fatal(LexerError *error, const char *source)
         error->msg
     );
 
-    // Calculate start of line
+    // Find start of the line
     const char *start = error->span.off_start;
     while (start > source && *(start - 1) != '\n')
         start--;
@@ -51,6 +53,7 @@ static void lexer_fatal(LexerError *error, const char *source)
     fputc('\n', stderr);
 }
 
+/* Show the error message and terminate the program */
 void lexer_error(const char *source, const char *msg, ErrorCode code, errorSpan span)
 {
     LexerError error = {
