@@ -1,6 +1,7 @@
 #pragma once 
 #include <ctype.h>
 #include "safeAlloc.h"
+#include "lexerErrors.h"
 
 /*---------------------------------------------- 
  * Lexical analysis
@@ -47,7 +48,8 @@ typedef struct MintclToken_t
 /* Lexer information */
 typedef struct 
 {
-    const char *p;               // Current source char         
+    const char *source;          // Save source
+    const char *p;               // Current source pointer       
     size_t len;                  // Source file length
     size_t capacity;             // Tokens capacity
     size_t count;                // Tokens count

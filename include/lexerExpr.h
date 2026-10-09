@@ -1,6 +1,7 @@
 #pragma once
 #include "safeAlloc.h"
 #include "lexer.h"
+#include "lexerErrors.h"
 
 /*
  * The following cases are not supported :

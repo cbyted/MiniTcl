@@ -9,6 +9,7 @@ static MiniTclLexer *lexer_create(const char *source)
 {
     MiniTclLexer *lex = (MiniTclLexer *)xmalloc(sizeof(MiniTclLexer));
     memset(lex, 0, sizeof(*lex));
+    lex->source = source;
     lex->p = source;
     lex->len = strlen(source);
     lex->capacity = 128; 
@@ -95,16 +96,6 @@ void printLexerTokens(MiniTclLexer *lex)
         else
             printf("%.*s\n", (int)tok->length, tok->start);
     }
-}
-
-/*----------------------------------------------
-    LEXER ERROR HANDLING 
------------------------------------------------*/
-
-// Debe mejorar (Versión inicial)
-static void lexer_show_error(const char *error, size_t line, size_t column, const char *fragment, size_t len)
-{
-    die("%s [line=%zu, col=%zu]: %.*s", error, line, column, len, fragment);
 }
 
 /*----------------------------------------------
@@ -265,6 +256,7 @@ static void scan_command_subst(MiniTclLexer *lex)
     consume(lex); // Consume first [
     const char *start = lex->p;
     size_t len = 0, depth = 1;
+    size_t start_line = lex->line, start_col = lex->column;
     while (!ateos(lex))
     {
         const char ch = peek(lex);
@@ -291,7 +283,15 @@ static void scan_command_subst(MiniTclLexer *lex)
         len++;
     }
     if (ateos(lex))
-        lexer_show_error("Sustitución de comando sin cerrar: ", lex->line, lex->column, start-1, len+1);
+    {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lex->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lex->source, "Command Substitution not closed", UNTERMINATED_COMMAND, span);
+    }
 }
 
 /*-------------------------------------------*
@@ -304,6 +304,7 @@ static void scan_braced(MiniTclLexer *lex)
     consume(lex); // Consume first {
     const char *start = lex->p;
     size_t len = 0, depth = 1;
+    size_t start_line = lex->line, start_col = lex->column;
     while (!ateos(lex))
     {
         const char ch = peek(lex);
@@ -330,7 +331,15 @@ static void scan_braced(MiniTclLexer *lex)
         len++;
     }
     if (ateos(lex))
-        lexer_show_error("Palabra entre corchetes sin cerrar '{'", lex->line, lex->column, start-1, len+1); 
+    {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lex->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lex->source, "Brace word not closed", UNTERMINATED_BRACE, span);
+    }
 }
 
 /*-------------------------------------------*
@@ -343,6 +352,7 @@ static void scan_string(MiniTclLexer *lex)
     consume(lex); // Consume first "
     const char *start = lex->p;
     size_t len = 0;
+    size_t start_line = lex->line, start_col = lex->column;
     while (!ateos(lex))
     {
         const char ch = peek(lex);    
@@ -363,7 +373,15 @@ static void scan_string(MiniTclLexer *lex)
         len++;
     }
     if (ateos(lex))
-        lexer_show_error("Comilla sin cerrar '\"'", lex->line, lex->column, start-1, len+1); 
+    {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lex->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lex->source, "Quote not closed", UNTERMINATED_QUOTE, span);
+    }
 }
 
 /*----------------------------------------------
@@ -404,6 +422,7 @@ static void scan_variable(MiniTclLexer *lex)
 
     const char *start = lex->p;
     size_t len = 0;
+    size_t start_line = lex->line, start_col = lex->column;
     char ch;
     
     while (!ateos(lex))
@@ -416,7 +435,15 @@ static void scan_variable(MiniTclLexer *lex)
     }
 
     if (ateos(lex) || len == 0)  // Just a single '$'
-        lexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1);    
+     {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lex->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lex->source, "'$' is not a valid variable", INVALID_VARIABLE, span);
+    }     
 
     if (isValidVar(start, len))
     {
@@ -439,7 +466,15 @@ static void scan_variable(MiniTclLexer *lex)
             }
 
             if (ateos(lex) && !closed)
-                lexer_show_error("Indice de arreglo sin cerrar '('", lex->line, lex->column, start-1, len+1); 
+            {
+                errorSpan span = {
+                    .off_start = start,
+                    .off_end = lex->p,
+                    .start_line = start_line,
+                    .start_col = start_col 
+                };
+                lexer_error(lex->source, "Index array not closed", ARRAY_NOT_CLOSED, span);
+             }     
 
             consume(lex); // Consume )
             MiniTclArrayVar *array = (MiniTclArrayVar *)xmalloc(sizeof(MiniTclArrayVar));
@@ -453,7 +488,15 @@ static void scan_variable(MiniTclLexer *lex)
             push_token(lex, (void *)start, len, MINITCL_TOK_VAR);
     }
     else
-        lexer_show_error("Variable mal formada", lex->line, lex->column, start-1, len+1); 
+    {
+        errorSpan span = {
+            .off_start = start,
+            .off_end = lex->p,
+            .start_line = start_line,
+            .start_col = start_col 
+        };
+        lexer_error(lex->source, "Malformed variable", INVALID_VARIABLE, span);
+    }      
 }
 
 /*----------------------------------------------
